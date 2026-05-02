@@ -504,6 +504,23 @@ export function convertMessages(
 		params.push({ role: role, content: sanitizeSurrogates(context.systemPrompt) });
 	}
 
+	// Detect if any assistant message in this conversation uses reasoning_content signaling.
+	// DeepSeek (and compatible providers) require reasoning_content to be echoed on EVERY
+	// assistant message once thinking mode is active — including turns where the model returned
+	// reasoning_content: "" (empty). Those turns produce no thinking block (line 228 skips empty
+	// deltas), so the per-message check at the bottom of the loop can't detect them. Pre-scanning
+	// lets us catch any message that originally had the field, even if this one didn't.
+	const hasReasoningContentSignal = context.messages.some(
+		(m) =>
+			m.role === "assistant" &&
+			Array.isArray(m.content) &&
+			(m.content as Array<{ type: string; thinkingSignature?: string }>).some(
+				(b) =>
+					b.type === "thinking" &&
+					(b.thinkingSignature === "reasoning_content" || b.thinkingSignature === undefined || b.thinkingSignature === ""),
+			),
+	);
+
 	let lastRole: string | null = null;
 
 	for (let i = 0; i < transformedMessages.length; i++) {
@@ -604,7 +621,11 @@ export function convertMessages(
 			// during session persistence (session-manager's MAX_PERSIST_CHARS truncation),
 			// so restored messages lose the "reasoning_content" signature. Without this
 			// fallback, DeepSeek returns 400 errors on restored sessions with tool calls.
-			if (!nonEmptyThinkingBlocks.length && thinkingBlocks.length > 0 && (firstSignature === "reasoning_content" || firstSignature === undefined)) {
+			if (
+				!nonEmptyThinkingBlocks.length &&
+				(hasReasoningContentSignal ||
+					(thinkingBlocks.length > 0 && (firstSignature === "reasoning_content" || firstSignature === undefined || firstSignature === "")))
+			) {
 				(assistantMsg as any)["reasoning_content"] = "";
 			}
 
