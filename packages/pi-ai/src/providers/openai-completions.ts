@@ -600,7 +600,11 @@ export function convertMessages(
 			// returned reasoning_content, the API requires it on every subsequent turn.
 			// We set it to an empty string when there's no non-empty thinking content
 			// but the model is a reasoning model that uses reasoning_content signaling.
-			if (!nonEmptyThinkingBlocks.length && thinkingBlocks.length > 0 && firstSignature === "reasoning_content") {
+			// Also handle undefined signature — the thinkingSignature field is cleared
+			// during session persistence (session-manager's MAX_PERSIST_CHARS truncation),
+			// so restored messages lose the "reasoning_content" signature. Without this
+			// fallback, DeepSeek returns 400 errors on restored sessions with tool calls.
+			if (!nonEmptyThinkingBlocks.length && thinkingBlocks.length > 0 && (firstSignature === "reasoning_content" || firstSignature === undefined)) {
 				(assistantMsg as any)["reasoning_content"] = "";
 			}
 
