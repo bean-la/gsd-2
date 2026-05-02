@@ -572,6 +572,8 @@ export function convertMessages(
 
 			// Handle thinking blocks
 			const thinkingBlocks = msg.content.filter((b) => b.type === "thinking") as ThinkingContent[];
+			// Fetch the first signature — needed for reasoning_content echo (DeepSeek, etc.)
+			const firstSignature = thinkingBlocks[0]?.thinkingSignature;
 			// Filter out empty thinking blocks to avoid API validation errors
 			const nonEmptyThinkingBlocks = thinkingBlocks.filter((b) => b.thinking && b.thinking.trim().length > 0);
 			if (nonEmptyThinkingBlocks.length > 0) {
@@ -591,6 +593,15 @@ export function convertMessages(
 						(assistantMsg as any)[signature] = nonEmptyThinkingBlocks.map((b) => b.thinking).join("\n");
 					}
 				}
+			}
+			// DeepSeek (and some other providers) require reasoning_content to always
+			// be echoed back on assistant messages, even when the thinking text is empty.
+			// This is needed for the thinking mode contract: if the model previously
+			// returned reasoning_content, the API requires it on every subsequent turn.
+			// We set it to an empty string when there's no non-empty thinking content
+			// but the model is a reasoning model that uses reasoning_content signaling.
+			if (!nonEmptyThinkingBlocks.length && thinkingBlocks.length > 0 && firstSignature === "reasoning_content") {
+				(assistantMsg as any)["reasoning_content"] = "";
 			}
 
 			const toolCalls = msg.content.filter((b) => b.type === "toolCall") as ToolCall[];
